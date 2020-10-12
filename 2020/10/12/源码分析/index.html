@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="CTF，IT" />
+   
+  <meta name="description" content="摸鱼的 - Nitwit" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    malloc源码分析(未完) |  摸鱼的 - Nitwit
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  
+<script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+
+  
+  
+
+  
+
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      <canvas class="fireworks"></canvas>
+      <style>
+        .fireworks {
+          position: fixed;
+          left: 0;
+          top: 0;
+          z-index: 99999;
+          pointer-events: none;
+        }
+      </style>
+      
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-源码分析"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  malloc源码分析(未完)
+</h1>
+ 
+
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/10/12/%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90/" class="article-date">
+  <time datetime="2020-10-12T00:24:14.000Z" itemprop="datePublished">2020-10-12</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">7.1k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">33 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <ul>
+<li><h3 id="276-302-malloc-assert函数"><a href="#276-302-malloc-assert函数" class="headerlink" title="276 - 302 __malloc_assert函数"></a>276 - 302 __malloc_assert函数</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> MALLOC_DEBUG</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MALLOC_DEBUG 0</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifdef</span> NDEBUG</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> assert(expr) ((void) 0)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">else</span></span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> assert(expr) \</span></span><br><span class="line">  ((expr)								      \</span><br><span class="line">   ? ((<span class="keyword">void</span>) <span class="number">0</span>)								      \</span><br><span class="line">   : __malloc_assert (#expr, __FILE__, __LINE__, __func__))</span><br><span class="line"></span><br><span class="line"><span class="keyword">extern</span> <span class="keyword">const</span> <span class="keyword">char</span> *__progname;</span><br><span class="line"></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span></span><br><span class="line">__malloc_assert (<span class="keyword">const</span> <span class="keyword">char</span> *assertion, <span class="keyword">const</span> <span class="keyword">char</span> *file, <span class="keyword">unsigned</span> <span class="keyword">int</span> line,</span><br><span class="line">		 <span class="keyword">const</span> <span class="keyword">char</span> *function)</span><br><span class="line">&#123;</span><br><span class="line">  (<span class="keyword">void</span>) __fxprintf (<span class="literal">NULL</span>, <span class="string">&quot;%s%s%s:%u: %s%sAssertion `%s&#x27; failed.\n&quot;</span>,</span><br><span class="line">		     __progname, __progname[<span class="number">0</span>] ? <span class="string">&quot;: &quot;</span> : <span class="string">&quot;&quot;</span>,</span><br><span class="line">		     file, line,</span><br><span class="line">		     function ? function : <span class="string">&quot;&quot;</span>, function ? <span class="string">&quot;: &quot;</span> : <span class="string">&quot;&quot;</span>,</span><br><span class="line">		     assertion);</span><br><span class="line">  fflush (<span class="built_in">stderr</span>);</span><br><span class="line">  <span class="built_in">abort</span> ();</span><br><span class="line">&#125;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br></pre></td></tr></table></figure>
+
+<ul>
+<li><strong>宏 debug处理</strong></li>
+<li><strong>__malloc_assert函数</strong>  四个参数 ： 报错声明，报错文件， 报错行数， 报错函数</li>
+</ul>
+</li>
+<li><h3 id="305-334-INTERNAL-SIZE-T"><a href="#305-334-INTERNAL-SIZE-T" class="headerlink" title="305 - 334 INTERNAL_SIZE_T"></a>305 - 334 INTERNAL_SIZE_T</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  INTERNAL_SIZE_T is the word-size used for internal bookkeeping</span></span><br><span class="line"><span class="comment">  of chunk sizes.</span></span><br><span class="line"><span class="comment">  *INTERNAL_SIZE_T是用于内部chunk_size大小*</span></span><br><span class="line"><span class="comment">  </span></span><br><span class="line"><span class="comment">  The default version is the same as size_t.</span></span><br><span class="line"><span class="comment">  *默认的版本与size_t相同*</span></span><br><span class="line"><span class="comment">  </span></span><br><span class="line"><span class="comment">  While not strictly necessary, it is best to define this as an</span></span><br><span class="line"><span class="comment">  unsigned type, even if size_t is a signed type. This may avoid some</span></span><br><span class="line"><span class="comment">  artificial size limitations on some systems.</span></span><br><span class="line"><span class="comment">  *虽然不是必须的，但最好还是定义成一个unsigned类型，即使size_t是一个signed类型，因为这可以避免在一些系统里的人为大小限制*</span></span><br><span class="line"><span class="comment">  </span></span><br><span class="line"><span class="comment">  On a 64-bit machine, you may be able to reduce malloc overhead by</span></span><br><span class="line"><span class="comment">  defining INTERNAL_SIZE_T to be a 32 bit `unsigned int&#x27; at the</span></span><br><span class="line"><span class="comment">  expense of not being able to handle more than 2^32 of malloced</span></span><br><span class="line"><span class="comment">  space. If this limitation is acceptable, you are encouraged to set</span></span><br><span class="line"><span class="comment">  this unless you are on a platform requiring 16byte alignments. In</span></span><br><span class="line"><span class="comment">  this case the alignment requirements turn out to negate any</span></span><br><span class="line"><span class="comment">  potential advantages of decreasing size_t word size.</span></span><br><span class="line"><span class="comment">  * 在64位计算机上，您可以通过将 INTERNAL_SIZE_T 的变量类型定义为 32 位的 unsigned       int来减少 malloc 开销，但代价是无法处理超过 2 ^ 32 的 malloc 空间。</span></span><br><span class="line"><span class="comment">    如果可以接受此限制，除非您在要求 16 字节对齐的平台上，否则建议您进行设置。 </span></span><br><span class="line"><span class="comment">    在这种情况下，对齐的要求最终使减小 size_t 的字大小的任何潜在优势都化为了乌有</span></span><br><span class="line"><span class="comment">  *</span></span><br><span class="line"><span class="comment">  </span></span><br><span class="line"><span class="comment">  Implementors: Beware of the possible combinations of:</span></span><br><span class="line"><span class="comment">     - INTERNAL_SIZE_T might be signed or unsigned, might be 32 or 64 bits,</span></span><br><span class="line"><span class="comment">       and might be the same width as int or as long</span></span><br><span class="line"><span class="comment">     - size_t might have different width and signedness as INTERNAL_SIZE_T</span></span><br><span class="line"><span class="comment">     - int and long might be 32 or 64 bits, and might be the same width</span></span><br><span class="line"><span class="comment">  To deal with this, most comparisons and difference computations</span></span><br><span class="line"><span class="comment">  among INTERNAL_SIZE_Ts should cast them to unsigned long, being</span></span><br><span class="line"><span class="comment">  aware of the fact that casting an unsigned int to a wider long does</span></span><br><span class="line"><span class="comment">  not sign-extend. (This also makes checking for negative numbers</span></span><br><span class="line"><span class="comment">  awkward.) Some of these casts result in harmless compiler warnings</span></span><br><span class="line"><span class="comment">  on some systems.</span></span><br><span class="line"><span class="comment">  *接口：谨防以下情况的可能组合：</span></span><br><span class="line"><span class="comment">     -INTERNAL_SIZE_T 的变量类型可能是 signed 或者是 unsigned的，</span></span><br><span class="line"><span class="comment">      可能是 32 位或 64 位，并且宽度可能与 int 相同或与 long 相同</span></span><br><span class="line"><span class="comment">      -size_t 的宽度和签名可能与 INTERNAL_SIZE_T 不同</span></span><br><span class="line"><span class="comment">     -int 和 long 可能是 32 或 64 位，并且可能是相同的宽度</span></span><br><span class="line"><span class="comment">  为了解决这个问题，INTERNAL_SIZE_T 之间的大多数比较和差值计算都应将它们强制转换为无符号  长整数，并意识到将无符号int强制转换为较宽长整数不会对符号进行扩展的事实。</span></span><br><span class="line"><span class="comment">  (这也使检查负数变得很尴尬。)其中某些强制类型转换在某些系统上会导致无害的编译器警告。</span></span><br><span class="line"><span class="comment">  *</span></span><br><span class="line"><span class="comment">*/</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="344-371-MALLOC-ALIGNMENT"><a href="#344-371-MALLOC-ALIGNMENT" class="headerlink" title="344 - 371 MALLOC_ALIGNMENT"></a>344 - 371 MALLOC_ALIGNMENT</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  MALLOC_ALIGNMENT is the minimum alignment for malloc&#x27;ed chunks.</span></span><br><span class="line"><span class="comment">  It must be a power of two at least 2 * SIZE_SZ, even on machines</span></span><br><span class="line"><span class="comment">  for which smaller alignments would suffice. It may be defined as</span></span><br><span class="line"><span class="comment">  larger than this though. Note however that code and data structures</span></span><br><span class="line"><span class="comment">  are optimized for the case of 8-byte alignment.</span></span><br><span class="line"><span class="comment">  *MALLOC_ALIGNMENT是malloc 分配的块时最小的对齐方式。</span></span><br><span class="line"><span class="comment">   即使对于更小的对齐方式都足以适应的机器，它的大小也必须是 2 的幂次数，而且它的大小至少为 2 * SIZE_SZ 。</span></span><br><span class="line"><span class="comment">   但是，你可以将其定义为大于此值。 但是请注意，代码和数据结构针对 8 字节对齐的情况进行了优化。</span></span><br><span class="line"><span class="comment">  *</span></span><br><span class="line"><span class="comment">  </span></span><br><span class="line"><span class="comment">  #ifndef MALLOC_ALIGNMENT</span></span><br><span class="line"><span class="comment">  #if !SHLIB_COMPAT (libc, GLIBC_2_0, GLIBC_2_16)</span></span><br><span class="line"><span class="comment">  #  define MALLOC_ALIGNMENT       (2 *SIZE_SZ &lt; __alignof__ (long double)      \</span></span><br><span class="line"><span class="comment">                                  ? __alignof__ (long double) : 2 *SIZE_SZ)</span></span><br><span class="line"><span class="comment">  # else</span></span><br><span class="line"><span class="comment">  #  define MALLOC_ALIGNMENT       (2 *SIZE_SZ)</span></span><br><span class="line"><span class="comment">  # endif</span></span><br><span class="line"><span class="comment">  #endif</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  *判断该 GLIBC 是否是在 GLIBC_2.0 版本中引入，且在 GLIBC_2.16 版本中被淘汰，</span></span><br><span class="line"><span class="comment">    如果是就返回 1，不是就返回 0，也就是说如果没有旧版本的 GLIBC，</span></span><br><span class="line"><span class="comment">    那么就会通过如下方式设置 MALLOC_ALIGNMENT 的值(一种动态分配机制)：</span></span><br><span class="line"><span class="comment">        判断 long double 变量类型在内存中的对齐方式，</span></span><br><span class="line"><span class="comment">        如果对齐所需的字节数大于 2 * sizeof(size_t)，</span></span><br><span class="line"><span class="comment">        那么 MALLOC_ALIGNMENT 就等于 long double 变量类型的变量</span></span><br><span class="line"><span class="comment">        对齐所需的字节数大小，否则就等于 2 * sizeof(size_t)</span></span><br><span class="line"><span class="comment">    如果有旧版本的 GLIBC 的符号版本的话，那么 MALLOC_ALIGNMENT  的值</span></span><br><span class="line"><span class="comment">    就默认设置为 2 * sizeof(size_t)</span></span><br><span class="line"><span class="comment">    </span></span><br><span class="line"><span class="comment">/* This is the correct definition when there is no past ABI to constrain it.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">   Among configurations with a past ABI constraint, it differs from</span></span><br><span class="line"><span class="comment">   2*SIZE_SZ only on powerpc32.  For the time being, changing this is</span></span><br><span class="line"><span class="comment">   causing more compatibility problems due to malloc_get_state and</span></span><br><span class="line"><span class="comment">   malloc_set_state than will returning blocks not adequately aligned for</span></span><br><span class="line"><span class="comment">   long double objects under -mlong-double-128.  */</span></span><br><span class="line">*  当这里没有past ABI来束缚它时，这是正确的定义。</span><br><span class="line">    </span><br><span class="line">   在具有past ABI的配置之间，它只在powerpc32与<span class="number">2</span>*SIZE_SZ不同。暂时，对于在 -mlong-<span class="keyword">double</span><span class="number">-128</span> 下返回未充分对齐的堆块，同时也是 <span class="keyword">long</span> <span class="keyword">double</span> 变量类型的对象，改变它会造成更多兼容性问题，因为malloc_get_state和malloc_set_state的存在。</span><br><span class="line">*</span><br><span class="line"></span><br><span class="line"><span class="meta">#  <span class="meta-keyword">define</span> MALLOC_ALIGNMENT       (2 *SIZE_SZ &lt; __alignof__ (long double)      \</span></span><br><span class="line">                                  ? __alignof__ (<span class="keyword">long</span> <span class="keyword">double</span>) : <span class="number">2</span> *SIZE_SZ)</span><br><span class="line"><span class="meta"># <span class="meta-keyword">else</span></span></span><br><span class="line"><span class="meta">#  <span class="meta-keyword">define</span> MALLOC_ALIGNMENT       (2 *SIZE_SZ)</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">endif</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* The corresponding bit mask value */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MALLOC_ALIGN_MASK      (MALLOC_ALIGNMENT - 1)</span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line">*/</span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="375-384-REALLOC-ZERO-BYTES-FREES"><a href="#375-384-REALLOC-ZERO-BYTES-FREES" class="headerlink" title="375 - 384  REALLOC_ZERO_BYTES_FREES"></a>375 - 384  REALLOC_ZERO_BYTES_FREES</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  REALLOC_ZERO_BYTES_FREES should be set if a call to</span></span><br><span class="line"><span class="comment">  realloc with zero bytes should be the same as a call to free.</span></span><br><span class="line"><span class="comment">  This is required by the C standard. Otherwise, since this malloc</span></span><br><span class="line"><span class="comment">  returns a unique pointer for malloc(0), so does realloc(p, 0).</span></span><br><span class="line"><span class="comment"> 【译】</span></span><br><span class="line"><span class="comment"> 如果一个调用零字节的realloc应该与free调用相同，那么应该设置REALLOC_ZERO_BYTES_FREES。</span></span><br><span class="line"><span class="comment"> 这要被c标准库需要的。</span></span><br><span class="line"><span class="comment"> 否则，因为这个malloc返回一个确定的指针给malloc(0),所以realloc(p,0)也是这样</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> REALLOC_ZERO_BYTES_FREES</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> REALLOC_ZERO_BYTES_FREES 1</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="387-411-TRIM-FASTBINS"><a href="#387-411-TRIM-FASTBINS" class="headerlink" title="387 - 411 TRIM_FASTBINS"></a>387 - 411 TRIM_FASTBINS</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  TRIM_FASTBINS controls whether free() of a very small chunk can</span></span><br><span class="line"><span class="comment">  immediately lead to trimming. Setting to true (1) can reduce memory</span></span><br><span class="line"><span class="comment">  footprint, but will almost always slow down programs that use a lot</span></span><br><span class="line"><span class="comment">  of small chunks.</span></span><br><span class="line"><span class="comment">【译】</span></span><br><span class="line"><span class="comment">TRIM_FASTBINS 变量控制很小的chunk再执行free()时，可以导致立即合并。</span></span><br><span class="line"><span class="comment">将 TRIM_FASTBINS 变量的值设置为 true，即 1，可以减少内存占用，但是会减慢那些使用很小的chunk的程序。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  Define this only if you are willing to give up some speed to more</span></span><br><span class="line"><span class="comment">  aggressively reduce system-level memory footprint when releasing</span></span><br><span class="line"><span class="comment">  memory in programs that use many small chunks.  You can get</span></span><br><span class="line"><span class="comment">  essentially the same effect by setting MXFAST to 0, but this can</span></span><br><span class="line"><span class="comment">  lead to even greater slowdowns in programs using many small chunks.</span></span><br><span class="line"><span class="comment">  TRIM_FASTBINS is an in-between compile-time option, that disables</span></span><br><span class="line"><span class="comment">  only those chunks bordering topmost memory from being placed in</span></span><br><span class="line"><span class="comment">  fastbins.</span></span><br><span class="line"><span class="comment">【译】</span></span><br><span class="line"><span class="comment">当在使用许多小的chunk的程序中释放内存时，为了更积极地减少系统级内存占用，可以放弃一些速度。</span></span><br><span class="line"><span class="comment">通过将MXFAST设置为0，您可以获得本质上相同的效果，但这可能导致使用许多小的chunk的程序出现更大的速度下降。</span></span><br><span class="line"><span class="comment">TRIM_FASTBINS是一个介于两者之间的编译时选项，它只禁止那些与最上层内存接壤的块被放置在fastbins中。</span></span><br><span class="line"><span class="comment">*/</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="407-477-MORECORE"><a href="#407-477-MORECORE" class="headerlink" title="407 - 477 MORECORE"></a>407 - 477 MORECORE</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Definition for getting more memory from the OS.  */</span></span><br><span class="line">【译】</span><br><span class="line">从系统获得更多的内存的定义 </span><br><span class="line">【译】</span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MORECORE         (*__morecore)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MORECORE_FAILURE 0</span></span><br><span class="line"><span class="keyword">void</span> * __default_morecore (<span class="keyword">ptrdiff_t</span>);</span><br><span class="line"><span class="keyword">void</span> *(*__morecore)(<span class="keyword">ptrdiff_t</span>) = __default_morecore;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;string.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  MORECORE-related declarations. By default, rely on sbrk</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  MORECORE-related声明。默认情况下，依赖于sbrk</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  MORECORE is the name of the routine to call to obtain more memory</span></span><br><span class="line"><span class="comment">  from the system.  See below for general guidance on writing</span></span><br><span class="line"><span class="comment">  alternative MORECORE functions, as well as a version for WIN32 and a</span></span><br><span class="line"><span class="comment">  sample version for pre-OSX macos.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  MORECORE是为了从系统中获取更多内存而调用的例程的名称。</span></span><br><span class="line"><span class="comment">  请参阅下面关于编写备用MORECORE函数的一般指南，以及针对WIN32的版本和针对pre-OSX macos的示例版本。</span></span><br><span class="line"><span class="comment">  </span></span><br><span class="line"><span class="comment">  </span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> MORECORE</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MORECORE sbrk</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  MORECORE_FAILURE is the value returned upon failure of MORECORE</span></span><br><span class="line"><span class="comment">  as well as mmap. Since it cannot be an otherwise valid memory address,</span></span><br><span class="line"><span class="comment">  and must reflect values of standard sys calls, you probably ought not</span></span><br><span class="line"><span class="comment">  try to redefine it.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  MORECORE_FAILURE是MORECORE和mmap失败时返回的值。</span></span><br><span class="line"><span class="comment">  因为它不能是一个有效的内存地址，而且必须反映标准sys调用的值，所以您可能不应该尝试重新定义它。</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> MORECORE_FAILURE</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MORECORE_FAILURE (-1)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  If MORECORE_CONTIGUOUS is true, take advantage of fact that</span></span><br><span class="line"><span class="comment">  consecutive calls to MORECORE with positive arguments always return</span></span><br><span class="line"><span class="comment">  contiguous increasing addresses.  This is true of unix sbrk.  Even</span></span><br><span class="line"><span class="comment">  if not defined, when regions happen to be contiguous, malloc will</span></span><br><span class="line"><span class="comment">  permit allocations spanning regions obtained from different</span></span><br><span class="line"><span class="comment">  calls. But defining this when applicable enables some stronger</span></span><br><span class="line"><span class="comment">  consistency checks and space efficiencies.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  如果MORECORE_CONTIGUOUS为TURE，利用对MORECORE的连续调用具有正参数总是返回连续递增的地址这一事实。</span></span><br><span class="line"><span class="comment">  unix sbrk就是这样。</span></span><br><span class="line"><span class="comment">  即使没有定义，当区域碰巧是连续的时，malloc将允许跨区域的分配通过不同的调用获得。</span></span><br><span class="line"><span class="comment">  但是在适用的情况下定义它可以实现更强的一致性检查和空间效率。</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> MORECORE_CONTIGUOUS</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MORECORE_CONTIGUOUS 1</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  Define MORECORE_CANNOT_TRIM if your version of MORECORE</span></span><br><span class="line"><span class="comment">  cannot release space back to the system when given negative</span></span><br><span class="line"><span class="comment">  arguments. This is generally necessary only if you are using</span></span><br><span class="line"><span class="comment">  a hand-crafted MORECORE function that cannot handle negative arguments.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  如果您的MORECORE版本在给出否定参数时无法将空间释放回系统，请定义MORECORE_CANNOT_TRIM。</span></span><br><span class="line"><span class="comment">  只有在使用不能处理否定参数的手工MORECORE函数时，这通常是必需的。</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* #define MORECORE_CANNOT_TRIM */</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/*  MORECORE_CLEARS           (default 1)</span></span><br><span class="line"><span class="comment">     The degree to which the routine mapped to MORECORE zeroes out</span></span><br><span class="line"><span class="comment">     memory: never (0), only for newly allocated space (1) or always</span></span><br><span class="line"><span class="comment">     (2).  The distinction between (1) and (2) is necessary because on</span></span><br><span class="line"><span class="comment">     some systems, if the application first decrements and then</span></span><br><span class="line"><span class="comment">     increments the break value, the contents of the reallocated space</span></span><br><span class="line"><span class="comment">     are unspecified.</span></span><br><span class="line"><span class="comment">     【译】</span></span><br><span class="line"><span class="comment">     例程映射到MORECORE将内存归零的程度:never(0)，仅对新分配的空间(1)或always(2)。</span></span><br><span class="line"><span class="comment">     (1)和(2)之间的区别是必要的，因为在某些系统上，如果应用程序先递减然后递增break值，那么重新分配的空间的内容是不指定的。。。。。。</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> MORECORE_CLEARS</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> MORECORE_CLEARS 1</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="480-494-MMAP-AS-MORECORE-SIZE"><a href="#480-494-MMAP-AS-MORECORE-SIZE" class="headerlink" title="480 - 494 MMAP_AS_MORECORE_SIZE"></a>480 - 494 MMAP_AS_MORECORE_SIZE</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">   MMAP_AS_MORECORE_SIZE is the minimum mmap size argument to use if</span></span><br><span class="line"><span class="comment">   sbrk fails, and mmap is used as a backup.  The value must be a</span></span><br><span class="line"><span class="comment">   multiple of page size.  This backup strategy generally applies only</span></span><br><span class="line"><span class="comment">   when systems have &quot;holes&quot; in address space, so sbrk cannot perform</span></span><br><span class="line"><span class="comment">   contiguous expansion, but there is still space available on system.</span></span><br><span class="line"><span class="comment">   On systems for which this is known to be useful (i.e. most linux</span></span><br><span class="line"><span class="comment">   kernels), this occurs only when programs allocate huge amounts of</span></span><br><span class="line"><span class="comment">   memory.  Between this, and the fact that mmap regions tend to be</span></span><br><span class="line"><span class="comment">   limited, the size should be large, to avoid too many mmap calls and</span></span><br><span class="line"><span class="comment">   thus avoid running out of kernel resources.</span></span><br><span class="line"><span class="comment">   【译】</span></span><br><span class="line"><span class="comment">   MMAP_AS_MORECORE_SIZE是sbrk失败时使用的最小mmap大小参数，mmap用作备份。</span></span><br><span class="line"><span class="comment">   该值必须是页面？？？？？大小的倍数。</span></span><br><span class="line"><span class="comment">   这种备份策略通常只适用于系统地址空间有“漏洞”时，因此sbrk不能执行连续扩展，但系统上仍然有可用空间。</span></span><br><span class="line"><span class="comment">   对于那些已知这是有用的系统(比如大多数linux内核)，只有当程序分配了大量内存时才会发生这种情况。</span></span><br><span class="line"><span class="comment">   由于mmap区域往往是有限的，因此大小应该较大，以避免过多的mmap调用，从而避免耗尽内核资源。</span></span><br><span class="line"><span class="comment">   */</span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> MMAP_AS_MORECORE_SIZE</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MMAP_AS_MORECORE_SIZE (1024 * 1024)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line"><span class="comment">/*</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="496-503-HAVE-MREMAP"><a href="#496-503-HAVE-MREMAP" class="headerlink" title="496 - 503 HAVE_MREMAP"></a>496 - 503 HAVE_MREMAP</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  Define HAVE_MREMAP to make realloc() use mremap() to re-allocate</span></span><br><span class="line"><span class="comment">  large blocks.</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> HAVE_MREMAP</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> HAVE_MREMAP 0</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br></pre></td></tr></table></figure>
+
+<h3 id="———-description-of-public-routines-————"><a href="#———-description-of-public-routines-————" class="headerlink" title="/* ———- description of public routines ———— /"></a>/* ———- description of public routines ———— <em>/</em></h3></li>
+<li><h3 id="525-540-malloc-size-t-n"><a href="#525-540-malloc-size-t-n" class="headerlink" title="525 - 540 malloc(size_t n)"></a>525 - 540 malloc(size_t n)</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  malloc(size_t n)</span></span><br><span class="line"><span class="comment">  Returns a pointer to a newly allocated chunk of at least n bytes, or null</span></span><br><span class="line"><span class="comment">  if no space is available. Additionally, on failure, errno is</span></span><br><span class="line"><span class="comment">  set to ENOMEM on ANSI C systems.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  返回一个指针指向一个新分配的块至少n个字节,或零如果没有可用的空间。</span></span><br><span class="line"><span class="comment">  另外，在ANSI C系统上，errno被设置为ENOMEM。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  If n is zero, malloc returns a minumum-sized chunk. (The minimum</span></span><br><span class="line"><span class="comment">  size is 16 bytes on most 32bit systems, and 24 or 32 bytes on 64bit</span></span><br><span class="line"><span class="comment">  systems.)  On most systems, size_t is an unsigned type, so calls</span></span><br><span class="line"><span class="comment">  with negative arguments are interpreted as requests for huge amounts</span></span><br><span class="line"><span class="comment">  of space, which will often fail. The maximum supported value of n</span></span><br><span class="line"><span class="comment">  differs across systems, but is in all cases less than the maximum</span></span><br><span class="line"><span class="comment">  representable value of a size_t.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  如果n为0,malloc返回一个最小大小的chunk。(在大多数32位系统中最小大小是16字节，在64位系统中最小大小是24或32字节。)</span></span><br><span class="line"><span class="comment">  在大多数系统中，size_t是一种无符号类型，因此带有负参数的调用被解释为对大量空间的请求，这通常会失败。</span></span><br><span class="line"><span class="comment">  n的最大支持值因系统的不同而不同，但在所有情况下都小于size_t的最大可表示值。</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="keyword">void</span>*  __libc_malloc(<span class="keyword">size_t</span>);</span><br><span class="line">libc_hidden_proto (__libc_malloc)</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="542-554-free-void-p"><a href="#542-554-free-void-p" class="headerlink" title="542 - 554 free(void* p)"></a>542 - 554 free(void* p)</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  free(void* p)</span></span><br><span class="line"><span class="comment">  Releases the chunk of memory pointed to by p, that had been previously</span></span><br><span class="line"><span class="comment">  allocated using malloc or a related routine such as realloc.</span></span><br><span class="line"><span class="comment">  It has no effect if p is null. It can have arbitrary (i.e., bad!)</span></span><br><span class="line"><span class="comment">  effects if p has already been freed.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  n的最大支持值因系统的不同而不同，但在所有情况下都小于size_t的最大可表示值。</span></span><br><span class="line"><span class="comment">  如果p是空的，它没有影响。如果p已经被释放，它可能会产生任意的(例如，坏!)效果。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  Unless disabled (using mallopt), freeing very large spaces will</span></span><br><span class="line"><span class="comment">  when possible, automatically trigger operations that give</span></span><br><span class="line"><span class="comment">  back unused memory to the system, thus reducing program footprint.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  除非禁用(使用mallopt)，否则释放非常大的空间将在可能的情况下自动触发将未使用的内存返回给系统的操作，从而减少程序占用空间。</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="keyword">void</span>     __libc_free(<span class="keyword">void</span>*);</span><br><span class="line">libc_hidden_proto (__libc_free)</span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="556-561-calloc-size-t-n-elements-size-t-element-size"><a href="#556-561-calloc-size-t-n-elements-size-t-element-size" class="headerlink" title="556 - 561 calloc(size_t n_elements,  size_t element_size)"></a>556 - 561 calloc(size_t n_elements,  size_t element_size)</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  calloc(size_t n_elements, size_t element_size);</span></span><br><span class="line"><span class="comment">  Returns a pointer to n_elements * element_size bytes, with all locations</span></span><br><span class="line"><span class="comment">  set to zero.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  返回一个指向n_elements * element_size字节的指针，将所有位置设置为零。</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="keyword">void</span>*  __libc_calloc(<span class="keyword">size_t</span>, <span class="keyword">size_t</span>);</span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="564-591-realloc-void-p-size-t-n"><a href="#564-591-realloc-void-p-size-t-n" class="headerlink" title="564 - 591 realloc(void* p, size_t n)"></a>564 - 591 realloc(void* p, size_t n)</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  realloc(void* p, size_t n)</span></span><br><span class="line"><span class="comment">  Returns a pointer to a chunk of size n that contains the same data</span></span><br><span class="line"><span class="comment">  as does chunk p up to the minimum of (n, p&#x27;s size) bytes, or null</span></span><br><span class="line"><span class="comment">  if no space is available.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  返回一个指向大小为n的块的指针，该块包含与块p相同的数据，最多为(n, p的大小)最小字节，如果没有可用空间，则为null。</span></span><br><span class="line"><span class="comment">  </span></span><br><span class="line"><span class="comment">  The returned pointer may or may not be the same as p. The algorithm</span></span><br><span class="line"><span class="comment">  prefers extending p when possible, otherwise it employs the</span></span><br><span class="line"><span class="comment">  equivalent of a malloc-copy-free sequence.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  返回的指针可能与p相同，也可能不相同。</span></span><br><span class="line"><span class="comment">  该算法倾向于在可能的情况下扩展p，否则它将使用mallo -copy-free序列的等价物。</span></span><br><span class="line"><span class="comment">  </span></span><br><span class="line"><span class="comment">  If p is null, realloc is equivalent to malloc.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  如果p是空指针, realloc相当于malloc。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  If space is not available, realloc returns null, errno is set (if on</span></span><br><span class="line"><span class="comment">  ANSI) and p is NOT freed.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  如果空间不可用，realloc返回null，设置errno(如果在ANSI上)，p不释放。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  if n is for fewer bytes than already held by p, the newly unused</span></span><br><span class="line"><span class="comment">  space is lopped off and freed if possible.  Unless the #define</span></span><br><span class="line"><span class="comment">  REALLOC_ZERO_BYTES_FREES is set, realloc with a size argument of</span></span><br><span class="line"><span class="comment">  zero (re)allocates a minimum-sized chunk.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  如果n的字节数少于p所保存的字节数，则尽可能删除并释放新未使用的空间。</span></span><br><span class="line"><span class="comment">  除非设置了#define realloc_zero_bytes_free，否则realloc使用大小参数为0 (re)分配一个最小大小的块。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  Large chunks that were internally obtained via mmap will always</span></span><br><span class="line"><span class="comment">  be reallocated using malloc-copy-free sequences unless</span></span><br><span class="line"><span class="comment">  the system supports MREMAP (currently only linux).</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  大量的内部获得通过mmap总是会重新分配使用malloc-copy-free序列,除非系统支持MREMAP(目前只有linux)。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  The old unix realloc convention of allowing the last-free&#x27;d chunk</span></span><br><span class="line"><span class="comment">  to be used as an argument to realloc is not supported.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  不支持旧的unix realloc约定，即允许使用last-free块作为realloc的参数。</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="keyword">void</span>*  __libc_realloc(<span class="keyword">void</span>*, <span class="keyword">size_t</span>);</span><br><span class="line">libc_hidden_proto (__libc_realloc)</span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="593-606-memalign-size-t-alignment-size-t-n"><a href="#593-606-memalign-size-t-alignment-size-t-n" class="headerlink" title="593 - 606 memalign(size_t alignment, size_t n)"></a>593 - 606 memalign(size_t alignment, size_t n)</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  memalign(size_t alignment, size_t n);</span></span><br><span class="line"><span class="comment">  Returns a pointer to a newly allocated chunk of n bytes, aligned</span></span><br><span class="line"><span class="comment">  in accord with the alignment argument.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  返回一个指向新分配的n个字节块的指针，该块按照对齐参数进行对齐。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  The alignment argument should be a power of two. If the argument is</span></span><br><span class="line"><span class="comment">  not a power of two, the nearest greater power is used.</span></span><br><span class="line"><span class="comment">  8-byte alignment is guaranteed by normal malloc calls, so don&#x27;t</span></span><br><span class="line"><span class="comment">  bother calling memalign with an argument of 8 or less.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  对齐参数应该是2的幂。如果参数不是2的幂，则使用最接近的更大的幂。</span></span><br><span class="line"><span class="comment">  正常的malloc调用保证了8字节对齐，所以不要用8或更少的参数来调用memalign。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  Overreliance on memalign is a sure way to fragment space.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  过度依赖memalign肯定会导致空间碎片化。</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="keyword">void</span>*  __libc_memalign(<span class="keyword">size_t</span>, <span class="keyword">size_t</span>);</span><br><span class="line">libc_hidden_proto (__libc_memalign)</span><br><span class="line">	</span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="608-613-valloc-size-t-n"><a href="#608-613-valloc-size-t-n" class="headerlink" title="608 - 613 valloc(size_t n)"></a>608 - 613 valloc(size_t n)</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  valloc(size_t n);</span></span><br><span class="line"><span class="comment">  Equivalent to memalign(pagesize, n), where pagesize is the page</span></span><br><span class="line"><span class="comment">  size of the system. If the pagesize is unknown, 4096 is used.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  相当于memalign(pagesize, n)，其中pagesize是系统的页面大小。如果页面大小未知，则使用4096</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="keyword">void</span>*  __libc_valloc(<span class="keyword">size_t</span>);</span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="617-639-mallopt-int-parameter-number-int-parameter-value"><a href="#617-639-mallopt-int-parameter-number-int-parameter-value" class="headerlink" title="617 - 639 mallopt(int parameter_number, int parameter_value)"></a>617 - 639 mallopt(int parameter_number, int parameter_value)</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  mallopt(int parameter_number, int parameter_value)</span></span><br><span class="line"><span class="comment">  Sets tunable parameters The format is to provide a</span></span><br><span class="line"><span class="comment">  (parameter-number, parameter-value) pair.  mallopt then sets the</span></span><br><span class="line"><span class="comment">  corresponding parameter to the argument value if it can (i.e., so</span></span><br><span class="line"><span class="comment">  long as the value is meaningful), and returns 1 if successful else</span></span><br><span class="line"><span class="comment">  0.  SVID/XPG/ANSI defines four standard param numbers for mallopt,</span></span><br><span class="line"><span class="comment">  normally defined in malloc.h.  Only one of these (M_MXFAST) is used</span></span><br><span class="line"><span class="comment">  in this malloc. The others (M_NLBLKS, M_GRAIN, M_KEEP) don&#x27;t apply,</span></span><br><span class="line"><span class="comment">  so setting them has no effect. But this malloc also supports four</span></span><br><span class="line"><span class="comment">  other options in mallopt. See below for details.  Briefly, supported</span></span><br><span class="line"><span class="comment">  parameters are as follows (listed defaults are for &quot;typical&quot;</span></span><br><span class="line"><span class="comment">  configurations).</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  设置可调参数格式是提供(参数数、参数值)对。</span></span><br><span class="line"><span class="comment">  mallopt然后将相应的参数设置为参数值(即，只要值是有意义的)，如果成功则返回1，否则返回0。</span></span><br><span class="line"><span class="comment">  SVID/XPG/ANSI为mallopt定义了四个标准参数，通常在mallo .h中定义。</span></span><br><span class="line"><span class="comment">  在这个malloc中只使用了其中一个(M_MXFAST)。</span></span><br><span class="line"><span class="comment">  其他的(M_NLBLKS, M_GRAIN, M_KEEP)不适用，所以设置它们没有效果。但是这个malloc还支持mallopt中的其他四个选项。</span></span><br><span class="line"><span class="comment">  详情见下文。简单地说，支持的参数如下(列出的默认值是针对“典型”配置的)。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  Symbol            param #   default    allowed param values</span></span><br><span class="line"><span class="comment">  M_MXFAST          1         64         0-80  (0 disables fastbins)</span></span><br><span class="line"><span class="comment">  M_TRIM_THRESHOLD -1         128*1024   any   (-1U disables trimming)</span></span><br><span class="line"><span class="comment">  M_TOP_PAD        -2         0          any</span></span><br><span class="line"><span class="comment">  M_MMAP_THRESHOLD -3         128*1024   any   (or 0 if no MMAP support)</span></span><br><span class="line"><span class="comment">  M_MMAP_MAX       -4         65536      any   (0 disables use of mmap)</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="keyword">int</span>      __libc_mallopt(<span class="keyword">int</span>, <span class="keyword">int</span>);</span><br><span class="line">libc_hidden_proto (__libc_mallopt)</span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="642-655-mallinfo"><a href="#642-655-mallinfo" class="headerlink" title="642 - 655 mallinfo"></a>642 - 655 mallinfo</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  mallinfo()</span></span><br><span class="line"><span class="comment">  Returns (by copy) a struct containing various summary statistics:</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  返回(通过复制)包含各种摘要统计的结构:</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  arena:     current total non-mmapped bytes allocated from system</span></span><br><span class="line"><span class="comment">  ordblks:   the number of free chunks</span></span><br><span class="line"><span class="comment">  smblks:    the number of fastbin blocks (i.e., small chunks that</span></span><br><span class="line"><span class="comment">	       have been freed but not use resused or consolidated)</span></span><br><span class="line"><span class="comment">  hblks:     current number of mmapped regions</span></span><br><span class="line"><span class="comment">  hblkhd:    total bytes held in mmapped regions</span></span><br><span class="line"><span class="comment">  usmblks:   the maximum total allocated space. This will be greater</span></span><br><span class="line"><span class="comment">		than current total if trimming has occurred.</span></span><br><span class="line"><span class="comment">  fsmblks:   total bytes held in fastbin blocks</span></span><br><span class="line"><span class="comment">  uordblks:  current total allocated space (normal or mmapped)</span></span><br><span class="line"><span class="comment">  fordblks:  total free space</span></span><br><span class="line"><span class="comment">  keepcost:  the maximum number of bytes that could ideally be released</span></span><br><span class="line"><span class="comment">	       back to system via malloc_trim. (&quot;ideally&quot; means that</span></span><br><span class="line"><span class="comment">	       it ignores page restrictions etc.)</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  Because these fields are ints, but internal bookkeeping mayc</span></span><br><span class="line"><span class="comment">  be kept as longs, the reported values may wrap around zero and</span></span><br><span class="line"><span class="comment">  thus be inaccurate.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  因为这些字段是int，但内部簿记可能保持long，报告的值可能绕零，因此是不准确的。</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">mallinfo</span> __<span class="title">libc_mallinfo</span>(<span class="title">void</span>);</span></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="668-673-pvalloc-size-t-n-；"><a href="#668-673-pvalloc-size-t-n-；" class="headerlink" title="668 - 673 pvalloc(size_t n)；"></a>668 - 673 pvalloc(size_t n)；</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  pvalloc(size_t n);</span></span><br><span class="line"><span class="comment">  Equivalent to valloc(minimum-page-that-holds(n)), that is,</span></span><br><span class="line"><span class="comment">  round up n to nearest pagesize.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  相当于valloc(保存的最小页面数(n))，也就是将n四舍五入到最接近的页面大小。</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="keyword">void</span>*  __libc_pvalloc(<span class="keyword">size_t</span>);</span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="675-700-malloc-trim-size-t-pad"><a href="#675-700-malloc-trim-size-t-pad" class="headerlink" title="675 - 700 malloc_trim(size_t pad);"></a>675 - 700 malloc_trim(size_t pad);</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  malloc_trim(size_t pad);</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  If possible, gives memory back to the system (via negative</span></span><br><span class="line"><span class="comment">  arguments to sbrk) if there is unused memory at the `high&#x27; end of</span></span><br><span class="line"><span class="comment">  the malloc pool. You can call this after freeing large blocks of</span></span><br><span class="line"><span class="comment">  memory to potentially reduce the system-level memory requirements</span></span><br><span class="line"><span class="comment">  of a program. However, it cannot guarantee to reduce memory. Under</span></span><br><span class="line"><span class="comment">  some allocation patterns, some large free blocks of memory will be</span></span><br><span class="line"><span class="comment">  locked between two used chunks, so they cannot be given back to</span></span><br><span class="line"><span class="comment">  the system.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  如果malloc池的“高端”端有未使用的内存，如果可能，将内存返回给系统(通过sbrk的负参数)。</span></span><br><span class="line"><span class="comment">  您可以在释放大内存块之后调用它，从而潜在地降低程序的系统级内存需求。</span></span><br><span class="line"><span class="comment">  但是，它不能保证减少内存。在某些分配模式下，一些大的空闲内存块将被锁定在两个使用的内存块之间，因此它们不能返回给系统。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  The `pad&#x27; argument to malloc_trim represents the amount of free</span></span><br><span class="line"><span class="comment">  trailing space to leave untrimmed. If this argument is zero,</span></span><br><span class="line"><span class="comment">  only the minimum amount of memory to maintain internal data</span></span><br><span class="line"><span class="comment">  structures will be left (one page or less). Non-zero arguments</span></span><br><span class="line"><span class="comment">  can be supplied to maintain enough trailing space to service</span></span><br><span class="line"><span class="comment">  future expected allocations without having to re-obtain memory</span></span><br><span class="line"><span class="comment">  from the system.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  malloc_trim的“pad”参数表示可以保留的未修剪的剩余空间数量。</span></span><br><span class="line"><span class="comment">  如果该参数为零，则只剩下维持内部数据结构的最小内存量(一个页面或更少)。</span></span><br><span class="line"><span class="comment">  可以提供非零参数来维护足够的尾部空间，以服务未来的预期分配，而无需重新从系统获取内存。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  Malloc_trim returns 1 if it actually released any memory, else 0.</span></span><br><span class="line"><span class="comment">  On systems that do not support &quot;negative sbrks&quot;, it will always</span></span><br><span class="line"><span class="comment">  return 0.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  如果Malloc_trim实际释放了内存，则返回1，否则返回0。在不支持“负sbrks”的系统上，它总是返回0。</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="keyword">int</span>      __malloc_trim(<span class="keyword">size_t</span>);</span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="701-716-malloc-usable-size-void-p"><a href="#701-716-malloc-usable-size-void-p" class="headerlink" title="701 - 716 malloc_usable_size(void* p);"></a>701 - 716 malloc_usable_size(void* p);</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  malloc_usable_size(void* p);</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  Returns the number of bytes you can actually use in</span></span><br><span class="line"><span class="comment">  an allocated chunk, which may be more than you requested (although</span></span><br><span class="line"><span class="comment">  often not) due to alignment and minimum size constraints.</span></span><br><span class="line"><span class="comment">  You can use this many bytes without worrying about</span></span><br><span class="line"><span class="comment">  overwriting other allocated objects. This is not a particularly great</span></span><br><span class="line"><span class="comment">  programming practice. malloc_usable_size can be more useful in</span></span><br><span class="line"><span class="comment">  debugging and assertions, for example:</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  返回您在已分配块中实际可以使用的字节数，由于对齐和最小大小的约束，该字节数可能大于您请求的字节数(尽管通常不是)。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  p = malloc(n);</span></span><br><span class="line"><span class="comment">  assert(malloc_usable_size(p) &gt;= 256)</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="keyword">size_t</span>   __malloc_usable_size(<span class="keyword">void</span>*);</span><br></pre></td></tr></table></figure>
+</li>
+<li><h3 id="717-738-malloc-stats"><a href="#717-738-malloc-stats" class="headerlink" title="717 - 738 malloc_stats();"></a>717 - 738 malloc_stats();</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  malloc_stats();</span></span><br><span class="line"><span class="comment">  Prints on stderr the amount of space obtained from the system (both</span></span><br><span class="line"><span class="comment">  via sbrk and mmap), the maximum amount (which may be more than</span></span><br><span class="line"><span class="comment">  current if malloc_trim and/or munmap got called), and the current</span></span><br><span class="line"><span class="comment">  number of bytes allocated via malloc (or realloc, etc) but not yet</span></span><br><span class="line"><span class="comment">  freed. Note that this is the number of bytes allocated, not the</span></span><br><span class="line"><span class="comment">  number requested. It will be larger than the number requested</span></span><br><span class="line"><span class="comment">  because of alignment and bookkeeping overhead. Because it includes</span></span><br><span class="line"><span class="comment">  alignment wastage as being in use, this figure may be greater than</span></span><br><span class="line"><span class="comment">  zero even when no user-level chunks are allocated.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  在stderr上打印从系统获得的空间量(通过sbrk和mmap)、最大空间量(如果调用malloc_trim和/或munmap，则可能大于当前空间)以及通过malloc(或realloc等)分配但尚未释放的当前字节数。</span></span><br><span class="line"><span class="comment">  注意，这是分配的字节数，而不是请求的字节数。</span></span><br><span class="line"><span class="comment">  由于校准和簿记开销，它将大于请求的数目。</span></span><br><span class="line"><span class="comment">  因为它包括正在使用的对齐浪费，所以即使没有分配用户级块，这个数字也可能大于零。</span></span><br><span class="line"><span class="comment">  </span></span><br><span class="line"><span class="comment">  The reported current and maximum system memory can be inaccurate if</span></span><br><span class="line"><span class="comment">  a program makes other calls to system memory allocation functions</span></span><br><span class="line"><span class="comment">  (normally sbrk) outside of malloc.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  如果程序在malloc之外对系统内存分配函数(通常是sbrk)进行其他调用，则报告的当前和最大系统内存可能不准确。</span></span><br><span class="line"><span class="comment">  </span></span><br><span class="line"><span class="comment">  malloc_stats prints only the most commonly interesting statistics.</span></span><br><span class="line"><span class="comment">  More information can be obtained by calling mallinfo.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  malloc_stats只打印最常见的有趣的统计信息。可以通过调用mallinfo获得更多信息</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="keyword">void</span>     __malloc_stats(<span class="keyword">void</span>);	</span><br></pre></td></tr></table></figure>
+</li>
+<li><pre><code class="c">/*
+  malloc_get_state(void);
+
+  Returns the state of all malloc variables in an opaque data
+structure.
+  【译】
+返回不透明数据结构中所有malloc变量的状态。
+*/
+void*  __malloc_get_state(void);
+
+/*
+  malloc_set_state(void* state);
+
+  Restore the state of all malloc variables from data obtained with
+  malloc_get_state().
+  【译】
+  从malloc_get_state()获得的数据中恢复所有malloc变量的状态。
+*/
+int      __malloc_set_state(void*);
+
+/*
+  posix_memalign(void **memptr, size_t alignment, size_t size);
+
+  POSIX wrapper like memalign(), checking for validity of size.
+  【译】
+  POSIX包装器，如memalign()，检查大小的有效性。
+*/
+int      __posix_memalign(void **, size_t, size_t);
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br></pre></td><td class="code"><pre><span class="line">  </span><br><span class="line">- ### 763 - 798  M_MXFAST</span><br><span class="line"></span><br><span class="line">  &#96;&#96;&#96;C</span><br><span class="line">  &#x2F;* mallopt tuning options *&#x2F;</span><br><span class="line">  </span><br><span class="line">  &#x2F;*</span><br><span class="line">    M_MXFAST is the maximum request size used for &quot;fastbins&quot;, special bins</span><br><span class="line">    that hold returned chunks without consolidating their spaces. This</span><br><span class="line">    enables future requests for chunks of the same size to be handled</span><br><span class="line">    very quickly, but can increase fragmentation, and thus increase the</span><br><span class="line">    overall memory footprint of a program.</span><br><span class="line">    【译】</span><br><span class="line">    M_MXFAST是用于“fastbins”的最大请求大小，特殊的bin保存返回的块没有合并他们的空间</span><br><span class="line">    这使得将来对相同大小的块的请求能够非常快速地处理，但是可能会增加碎片，从而增加程序的总体内存占用。</span><br><span class="line">  </span><br><span class="line">    This malloc manages fastbins very conservatively yet still</span><br><span class="line">    efficiently, so fragmentation is rarely a problem for values less</span><br><span class="line">    than or equal to the default.  The maximum supported value of MXFAST</span><br><span class="line">    is 80. You wouldn&#39;t want it any higher than this anyway.  Fastbins</span><br><span class="line">    are designed especially for use with many small structs, objects or</span><br><span class="line">    strings -- the default handles structs&#x2F;objects&#x2F;arrays with sizes up</span><br><span class="line">    to 8 4byte fields, or small strings representing words, tokens,</span><br><span class="line">    etc. Using fastbins for larger objects normally worsens</span><br><span class="line">    fragmentation without improving speed.</span><br><span class="line">    【译】</span><br><span class="line">    这个malloc对fastbin的管理非常保守，但仍然有效，所以当值小于或等于默认值时，碎片很少会成为问题。</span><br><span class="line">    MXFAST支持的最大值是80。你不会想要更高的。</span><br><span class="line">    fastbin是专门为许多小结构体、对象或字符串而设计的——默认的处理结构体&#x2F;对象&#x2F;数组的大小最多为8个4字节的字段，或者表示单词、标记等的小字符串。</span><br><span class="line">    对较大的对象使用fastbin通常会恶化碎片，而不会提高速度。</span><br><span class="line">  </span><br><span class="line">    M_MXFAST is set in REQUEST size units. It is internally used in</span><br><span class="line">    chunksize units, which adds padding and alignment.  You can reduce</span><br><span class="line">    M_MXFAST to 0 to disable all use of fastbins.  This causes the malloc</span><br><span class="line">    algorithm to be a closer approximation of fifo-best-fit in all cases,</span><br><span class="line">    not just for larger requests, but will generally cause it to be</span><br><span class="line">    slower.</span><br><span class="line">    【译】</span><br><span class="line">    M_MXFAST是设置在请求大小单位。它内部用于chunksize单位，以增加填充和对齐。</span><br><span class="line">    你可以减少M_MXFAST到0来禁用所有的fastbins。</span><br><span class="line">    这使得malloc算法在所有情况下都更接近fifo-best-fit，不仅是针对更大的请求，而且通常会导致它更慢。</span><br><span class="line">  *&#x2F;</span><br><span class="line"></span><br><span class="line">  </span><br><span class="line">  &#x2F;* M_MXFAST is a standard SVID&#x2F;XPG tuning option, usually listed in malloc.h *&#x2F;</span><br><span class="line">  #ifndef M_MXFAST</span><br><span class="line">  #define M_MXFAST            1</span><br><span class="line">  #endif</span><br><span class="line">  </span><br><span class="line">  #ifndef DEFAULT_MXFAST</span><br><span class="line">  #define DEFAULT_MXFAST     (64 * SIZE_SZ &#x2F; 4)</span><br><span class="line">  #endif</span><br></pre></td></tr></table></figure></code></pre>
+</li>
+<li><h3 id="801-865-M-TRIM-THRESHOLD"><a href="#801-865-M-TRIM-THRESHOLD" class="headerlink" title="801 - 865  M_TRIM_THRESHOLD"></a>801 - 865  M_TRIM_THRESHOLD</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  M_TRIM_THRESHOLD is the maximum amount of unused top-most memory</span></span><br><span class="line"><span class="comment">  to keep before releasing via malloc_trim in free().</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  M_TRIM_THRESHOLD是在free()中通过malloc_trim释放之前保留的最大未使用内存量。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  Automatic trimming is mainly useful in long-lived programs.</span></span><br><span class="line"><span class="comment">  Because trimming via sbrk can be slow on some systems, and can</span></span><br><span class="line"><span class="comment">  sometimes be wasteful (in cases where programs immediately</span></span><br><span class="line"><span class="comment">  afterward allocate more large chunks) the value should be high</span></span><br><span class="line"><span class="comment">  enough so that your overall system performance would improve by</span></span><br><span class="line"><span class="comment">  releasing this much memory.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  自动微调主要用于长寿命程序。</span></span><br><span class="line"><span class="comment">  因为在某些系统上通过sbrk进行裁减可能会很慢，</span></span><br><span class="line"><span class="comment">  而且有时会造成浪费(在程序随后立即分配更多大块的情况下)，</span></span><br><span class="line"><span class="comment">  所以这个值应该足够高，以便通过释放这么多内存可以提高整个系统的性能。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  The trim threshold and the mmap control parameters (see below)</span></span><br><span class="line"><span class="comment">  can be traded off with one another. Trimming and mmapping are</span></span><br><span class="line"><span class="comment">  two different ways of releasing unused memory back to the</span></span><br><span class="line"><span class="comment">  system. Between these two, it is often possible to keep</span></span><br><span class="line"><span class="comment">  system-level demands of a long-lived program down to a bare</span></span><br><span class="line"><span class="comment">  minimum. For example, in one test suite of sessions measuring</span></span><br><span class="line"><span class="comment">  the XF86 X server on Linux, using a trim threshold of 128K and a</span></span><br><span class="line"><span class="comment">  mmap threshold of 192K led to near-minimal long term resource</span></span><br><span class="line"><span class="comment">  consumption.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  修剪阈值和mmap控制参数(见下面)可以相互交换。</span></span><br><span class="line"><span class="comment">  微调和映射是将未使用内存释放回系统的两种不同方法。</span></span><br><span class="line"><span class="comment">  在这两者之间，通常可以将长寿命程序的系统级需求降到最低。</span></span><br><span class="line"><span class="comment">  例如，在测量Linux上的XF86 X服务器的一个会话测试套件中，使用修剪阈值128K和mmap阈值192K可以使长期资源消耗接近最小。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  If you are using this malloc in a long-lived program, it should</span></span><br><span class="line"><span class="comment">  pay to experiment with these values.  As a rough guide, you</span></span><br><span class="line"><span class="comment">  might set to a value close to the average size of a process</span></span><br><span class="line"><span class="comment">  (program) running on your system.  Releasing this much memory</span></span><br><span class="line"><span class="comment">  would allow such a process to run in memory.  Generally, it&#x27;s</span></span><br><span class="line"><span class="comment">  worth it to tune for trimming rather tham memory mapping when a</span></span><br><span class="line"><span class="comment">  program undergoes phases where several large chunks are</span></span><br><span class="line"><span class="comment">  allocated and released in ways that can reuse each other&#x27;s</span></span><br><span class="line"><span class="comment">  storage, perhaps mixed with phases where there are no such</span></span><br><span class="line"><span class="comment">  chunks at all.  And in well-behaved long-lived programs,</span></span><br><span class="line"><span class="comment">  controlling release of large blocks via trimming versus mapping</span></span><br><span class="line"><span class="comment">  is usually faster.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  如果您在一个长期存在的程序中使用这个malloc，那么应该对这些值进行试验。</span></span><br><span class="line"><span class="comment">  作为一个粗略的指导，您可以将(M_TRIM_THRESHOLD)设置为接近系统上运行的进程(程序)的平均大小的值。</span></span><br><span class="line"><span class="comment">  释放这么多内存将允许这样一个进程在内存中运行。</span></span><br><span class="line"><span class="comment">  一般来说，当一个程序经历一些阶段时，几个大的块被分配和释放的方式可以重用彼此的存储，可能与没有这样的块的阶段混合时，调整内存映射是值得的。</span></span><br><span class="line"><span class="comment">  而在表现良好的长寿程序中，通过微调而不是映射来控制大块的释放通常更快。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  However, in most programs, these parameters serve mainly as</span></span><br><span class="line"><span class="comment">  protection against the system-level effects of carrying around</span></span><br><span class="line"><span class="comment">  massive amounts of unneeded memory. Since frequent calls to</span></span><br><span class="line"><span class="comment">  sbrk, mmap, and munmap otherwise degrade performance, the default</span></span><br><span class="line"><span class="comment">  parameters are set to relatively high values that serve only as</span></span><br><span class="line"><span class="comment">  safeguards.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  然而，在大多数程序中，这些参数主要用于防止携带大量不需要的内存带来的系统级影响。</span></span><br><span class="line"><span class="comment">  由于频繁调用sbrk、mmap和munmap会降低性能，因此默认参数被设置为相对较高的值，仅作为保护措施。</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  The trim value It must be greater than page size to have any useful</span></span><br><span class="line"><span class="comment">  effect.  To disable trimming completely, you can set to</span></span><br><span class="line"><span class="comment">  (unsigned long)(-1)</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  修剪值必须大于页面大小才能产生有用的效果。</span></span><br><span class="line"><span class="comment">  要完全禁用修剪，您可以设置为(unsigned long)(-1)</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  Trim settings interact with fastbin (MXFAST) settings: Unless</span></span><br><span class="line"><span class="comment">  TRIM_FASTBINS is defined, automatic trimming never takes place upon</span></span><br><span class="line"><span class="comment">  freeing a chunk with size less than or equal to MXFAST. Trimming is</span></span><br><span class="line"><span class="comment">  instead delayed until subsequent freeing of larger chunks. However,</span></span><br><span class="line"><span class="comment">  you can still force an attempted trim by calling malloc_trim.</span></span><br><span class="line"><span class="comment">  【译】</span></span><br><span class="line"><span class="comment">  </span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  Also, trimming is not generally possible in cases where</span></span><br><span class="line"><span class="comment">  the main arena is obtained via mmap.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  Note that the trick some people use of mallocing a huge space and</span></span><br><span class="line"><span class="comment">  then freeing it at program startup, in an attempt to reserve system</span></span><br><span class="line"><span class="comment">  memory, doesn&#x27;t have the intended effect under automatic trimming,</span></span><br><span class="line"><span class="comment">  since that memory will immediately be returned to the system.</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> M_TRIM_THRESHOLD       -1</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> DEFAULT_TRIM_THRESHOLD</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> DEFAULT_TRIM_THRESHOLD (128 * 1024)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=http://example.com/2020/10/12/%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/10/12/double-freee%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            ddouble_freee学习笔记
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/10/11/hello-world/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">Hello World</div>
+      </a>
+    
+  </nav>
+
+   
+<!-- valine评论 -->
+<div id="vcomments-box">
+  <div id="vcomments"></div>
+</div>
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/valine@1.4.14/dist/Valine.min.js"></script>
+<script>
+  new Valine({
+    el: "#vcomments",
+    app_id: "",
+    app_key: "",
+    path: window.location.pathname,
+    avatar: "monsterid",
+    placeholder: "给我的文章加点评论吧~",
+    recordIP: true,
+  });
+  const infoEle = document.querySelector("#vcomments .info");
+  if (infoEle && infoEle.childNodes && infoEle.childNodes.length > 0) {
+    infoEle.childNodes.forEach(function (item) {
+      item.parentNode.removeChild(item);
+    });
+  }
+</script>
+<style>
+  #vcomments-box {
+    padding: 5px 30px;
+  }
+
+  @media screen and (max-width: 800px) {
+    #vcomments-box {
+      padding: 5px 0px;
+    }
+  }
+
+  #vcomments-box #vcomments {
+    background-color: #fff;
+  }
+
+  .v .vlist .vcard .vh {
+    padding-right: 20px;
+  }
+
+  .v .vlist .vcard {
+    padding-left: 10px;
+  }
+</style>
+
+ 
+     
+</article>
+ 
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020
+        <i class="ri-heart-fill heart_icon"></i> N1twit
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        
+        由 <a href="https://hexo.io" target="_blank">Hexo</a> 强力驱动
+        <span class="division">|</span>
+        主题 - <a href="https://github.com/Shen-Yu/hexo-theme-ayer" target="_blank">Ayer</a>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></s>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+        <script type="text/javascript" src='https://s9.cnzz.com/z_stat.php?id=1278069914&amp;web_id=1278069914'></script>
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/tou.jpg" alt="N1twit"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/2020/about">关于我</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    <div class="reward-item">
+      <img class="reward-img" src="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/img/alipay.jpg">
+      <span class="reward-type">支付宝</span>
+    </div>
+    
+    
+    <div class="reward-item">
+      <img class="reward-img" src="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/img/wechat.jpg">
+      <span class="reward-type">微信</span>
+    </div>
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<script src="https://cdn.jsdelivr.net/npm/animejs@latest/anime.min.js"></script>
+
+<script src="/js/clickBoom1.js"></script>
+
+
+<!-- ClickBoom2 -->
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+
+    
+  </div>
+</body>
+
+</html>
